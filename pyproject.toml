@@ -26,3 +26,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/to_md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "network: tests that require network access (deselect with '-m \"not network\"')",
+    "slow: tests that take a long time to run",
+]
