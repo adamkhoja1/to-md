@@ -15,7 +15,7 @@ from pydantic import BaseModel
 class OCRConfig(BaseModel):
     """Configuration for AI OCR."""
 
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-6-20250217"
     max_tokens: int = 4096
 
 
@@ -114,7 +114,7 @@ def ocr_image(client: Anthropic, image_path: Path, config: OCRConfig) -> str:
 def convert(
     *image_paths: str,
     output: str = "",
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-6-20250217",
     yes: bool = False,
 ) -> None:
     """OCR math equation images to LaTeX.

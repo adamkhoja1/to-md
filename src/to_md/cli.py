@@ -148,7 +148,7 @@ class CLI:
         self,
         *image_paths: str,
         output: str = "",
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6-20250217",
         yes: bool = False,
     ) -> None:
         """OCR math equation images to LaTeX.
