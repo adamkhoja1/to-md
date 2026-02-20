@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PLUGIN_JSON=".claude-plugin/plugin.json"
+
+# Validate plugin.json exists
+if [ ! -f "$PLUGIN_JSON" ]; then
+  echo "ERROR: $PLUGIN_JSON not found"
+  exit 1
+fi
+
+# Use claude plugin validate if available, otherwise fall back to JSON syntax check
+if command -v claude &>/dev/null; then
+  claude plugin validate .
+else
+  python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$PLUGIN_JSON" \
+    || { echo "ERROR: $PLUGIN_JSON is not valid JSON"; exit 1; }
+  echo "OK: $PLUGIN_JSON is valid JSON (claude CLI not available for full validation)"
+fi
