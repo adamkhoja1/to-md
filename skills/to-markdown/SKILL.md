@@ -175,6 +175,16 @@ uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/ --pag
 | `pymupdf` | Seconds | Basic | Simple prose, quick previews | (included) |
 | `surya` | Similar to marker | Good (math) | Math OCR hybrid | surya-ocr, Pillow |
 
+### QA Workspace & Fast Baseline
+
+- **Lay down a fast PyMuPDF baseline first.** Before or alongside a slow marker/surya run, convert with the default PyMuPDF backend into a `workspace/` subfolder of the output dir, chapter-split. It costs seconds, gives an early readable draft, and serves as the default scratch area for all QA artifacts (logs, findings, fix scripts) — keep them in `workspace/` so the final output dir stays clean.
+
+```bash
+uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/workspace/ --split-chapters
+```
+
+- **Use the baseline as a sanity checker.** For PDFs with an embedded text layer the PyMuPDF text is digit-exact, so when QA'ing a marker/LLM conversion, diff it against the baseline per chapter (numbers, equations, wording) to catch silent OCR corruption that a single backend won't reveal.
+
 ## EPUB Conversion
 
 ```bash
