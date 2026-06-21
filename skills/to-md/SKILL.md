@@ -1,5 +1,5 @@
 ---
-name: to-markdown
+name: to-md
 description: >-
   Convert documents to clean Obsidian-compatible markdown. Supports LaTeX (.tex, arXiv), PDF, EPUB,
   DOCX, and URLs. Use when the user wants to convert any document to markdown — e.g. "convert this

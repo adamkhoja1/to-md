@@ -1,5 +1,5 @@
 {
-  "name": "to-markdown",
+  "name": "to-md",
   "description": "Convert documents to clean Obsidian-compatible markdown. Supports LaTeX, PDF, EPUB, DOCX, and URLs.",
   "version": "0.1.0"
 }
