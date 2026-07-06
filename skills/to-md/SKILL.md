@@ -2,10 +2,11 @@
 name: to-md
 description: >-
   Convert documents to clean Obsidian-compatible markdown. Supports LaTeX (.tex, arXiv), PDF, EPUB,
-  DOCX, and URLs. Use when the user wants to convert any document to markdown — e.g. "convert this
-  paper", "arxiv to markdown", "convert this PDF", "save this webpage as markdown", "convert docx",
-  "epub to markdown".
-allowed-tools: Read, Write, Bash(uv:*), AskUserQuestion
+  DOCX, URLs, and Google Slides text exports. Use when the user wants to convert any document to
+  markdown — e.g. "convert this paper", "arxiv to markdown", "convert this PDF", "save this webpage
+  as markdown", "convert docx", "epub to markdown", "convert slides to markdown", "format this slide
+  export".
+allowed-tools: Read, Write, Edit, Glob, Bash(uv:*), AskUserQuestion
 ---
 
 # Document to Markdown Conversion
@@ -14,8 +15,9 @@ Convert documents to well-structured, Obsidian-compatible markdown with support 
 - **LaTeX** — arXiv papers, Overleaf exports, .tex files (math, citations, figures)
 - **PDF** — multiple backends, image extraction, chapter splitting
 - **EPUB** — chapter splitting, image extraction
-- **DOCX** — single or batch conversion
+- **DOCX** — single or batch conversion, image extraction
 - **URL** — web article extraction with optional images
+- **Slides** — Google Slides plain-text (.txt) exports → structured markdown (LLM-driven, no script)
 - **AI OCR** — math equation images to LaTeX
 
 ## Prerequisites Check
@@ -24,18 +26,18 @@ Convert documents to well-structured, Obsidian-compatible markdown with support 
 
 ```bash
 # 1. Project exists?
-test -d ~/Projects/to_md/src/to_md && echo "OK: project found" || echo "FAIL: project not found"
+test -d ~/Projects/to-md/src/to_md && echo "OK: project found" || echo "FAIL: project not found"
 
 # 2. Dependencies installed?
-uv run --project ~/Projects/to_md python -c "import to_md" 2>&1 && echo "OK: deps installed" || echo "FAIL: run 'cd ~/Projects/to_md && uv sync'"
+uv run --project ~/Projects/to-md python -c "import to_md" 2>&1 && echo "OK: deps installed" || echo "FAIL: run 'cd ~/Projects/to-md && uv sync'"
 
 # 3. Pandoc available?
 which pandoc && echo "OK: pandoc found" || echo "WARN: pandoc not found (needed for latex/docx)"
 ```
 
-**If project not found:** `git clone <repo-url> ~/Projects/to_md && cd ~/Projects/to_md && uv sync`
+**If project not found:** `git clone <repo-url> ~/Projects/to-md && cd ~/Projects/to-md && uv sync`
 
-**If deps not installed:** `cd ~/Projects/to_md && uv sync --all-extras`
+**If deps not installed:** `cd ~/Projects/to-md && uv sync --all-extras`
 
 ## Decision Flowchart
 
@@ -56,17 +58,20 @@ which pandoc && echo "OK: pandoc found" || echo "WARN: pandoc not found (needed 
 5. Is it a web page / URL?
    → YES: Use `to_md url`
 
-6. Is it a PDF?
+6. Is it a Google Slides plain-text export (.txt)?
+   → YES: Interpret into markdown per references/slides.md (LLM task, no script)
+
+7. Is it a PDF?
    → Check page count and choose backend (see PDF section below)
 
-7. Are there scanned math equation images?
+8. Are there scanned math equation images?
    → YES: Use `to_md ocr`
 ```
 
 ## Invocation Pattern
 
 ```bash
-uv run --project ~/Projects/to_md python -m to_md <format> SOURCE OUTPUT [OPTIONS]
+uv run --project ~/Projects/to-md python -m to_md <format> SOURCE OUTPUT [OPTIONS]
 ```
 
 ## LaTeX Conversion
@@ -79,22 +84,22 @@ Convert LaTeX source to markdown with math preservation, citation formatting, an
 
 ```bash
 # arXiv paper by ID
-uv run --project ~/Projects/to_md python -m to_md latex 2301.12345 /tmp/output/
+uv run --project ~/Projects/to-md python -m to_md latex 2301.12345 /tmp/output/
 
 # arXiv paper by URL
-uv run --project ~/Projects/to_md python -m to_md latex "https://arxiv.org/abs/2301.12345" /tmp/output/
+uv run --project ~/Projects/to-md python -m to_md latex "https://arxiv.org/abs/2301.12345" /tmp/output/
 
 # Local .tex file
-uv run --project ~/Projects/to_md python -m to_md latex paper.tex /tmp/output/
+uv run --project ~/Projects/to-md python -m to_md latex paper.tex /tmp/output/
 
 # Overleaf export (.zip)
-uv run --project ~/Projects/to_md python -m to_md latex project.zip /tmp/output/
+uv run --project ~/Projects/to-md python -m to_md latex project.zip /tmp/output/
 
 # Single file output (no splitting)
-uv run --project ~/Projects/to_md python -m to_md latex paper.tex /tmp/output/ --no-split
+uv run --project ~/Projects/to-md python -m to_md latex paper.tex /tmp/output/ --no-split
 
 # Flatten only (debug)
-uv run --project ~/Projects/to_md python -m to_md latex paper.tex /tmp/output/ --flatten-only
+uv run --project ~/Projects/to-md python -m to_md latex paper.tex /tmp/output/ --flatten-only
 ```
 
 ### LaTeX Options
@@ -135,22 +140,22 @@ After conversion, review the output for:
 
 ```bash
 # PDF with Marker (recommended)
-uv run --project ~/Projects/to_md --with marker-pdf python -m to_md pdf textbook.pdf output/ --backend marker
+uv run --project ~/Projects/to-md --with marker-pdf python -m to_md pdf textbook.pdf output/ --backend marker
 
 # PDF with PyMuPDF (fast fallback)
-uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/
+uv run --project ~/Projects/to-md python -m to_md pdf textbook.pdf output/
 
 # PDF with Marker + LLM
-uv run --project ~/Projects/to_md --with marker-pdf python -m to_md pdf textbook.pdf output/ --backend marker --use-llm
+uv run --project ~/Projects/to-md --with marker-pdf python -m to_md pdf textbook.pdf output/ --backend marker --use-llm
 
 # PDF with Surya hybrid (math OCR)
-uv run --project ~/Projects/to_md --with surya-ocr --with Pillow python -m to_md pdf textbook.pdf output/ --backend surya
+uv run --project ~/Projects/to-md --with surya-ocr --with Pillow python -m to_md pdf textbook.pdf output/ --backend surya
 
 # Split by chapters
-uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/ --split-chapters
+uv run --project ~/Projects/to-md python -m to_md pdf textbook.pdf output/ --split-chapters
 
 # Page range
-uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/ --page-range 45-55
+uv run --project ~/Projects/to-md python -m to_md pdf textbook.pdf output/ --page-range 45-55
 ```
 
 ### PDF Options
@@ -180,7 +185,7 @@ uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/ --pag
 - **Lay down a fast PyMuPDF baseline first.** Before or alongside a slow marker/surya run, convert with the default PyMuPDF backend into a `workspace/` subfolder of the output dir, chapter-split. It costs seconds, gives an early readable draft, and serves as the default scratch area for all QA artifacts (logs, findings, fix scripts) — keep them in `workspace/` so the final output dir stays clean.
 
 ```bash
-uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/workspace/ --split-chapters
+uv run --project ~/Projects/to-md python -m to_md pdf textbook.pdf output/workspace/ --split-chapters
 ```
 
 - **Use the baseline as a sanity checker.** For PDFs with an embedded text layer the PyMuPDF text is digit-exact, so when QA'ing a marker/LLM conversion, diff it against the baseline per chapter (numbers, equations, wording) to catch silent OCR corruption that a single backend won't reveal.
@@ -188,8 +193,8 @@ uv run --project ~/Projects/to_md python -m to_md pdf textbook.pdf output/worksp
 ## EPUB Conversion
 
 ```bash
-uv run --project ~/Projects/to_md python -m to_md epub book.epub output/
-uv run --project ~/Projects/to_md python -m to_md epub book.epub output/ --no-images
+uv run --project ~/Projects/to-md python -m to_md epub book.epub output/
+uv run --project ~/Projects/to-md python -m to_md epub book.epub output/ --no-images
 ```
 
 | Flag | Description |
@@ -201,36 +206,47 @@ uv run --project ~/Projects/to_md python -m to_md epub book.epub output/ --no-im
 
 ```bash
 # Single file
-uv run --project ~/Projects/to_md python -m to_md docx document.docx
+uv run --project ~/Projects/to-md python -m to_md docx document.docx
 
 # With output directory
-uv run --project ~/Projects/to_md python -m to_md docx document.docx --output-dir output/
+uv run --project ~/Projects/to-md python -m to_md docx document.docx --output-dir output/
 
 # Batch conversion
-uv run --project ~/Projects/to_md python -m to_md docx "docs/*.docx"
+uv run --project ~/Projects/to-md python -m to_md docx "docs/*.docx"
+
+# Strip images instead of extracting them
+uv run --project ~/Projects/to-md python -m to_md docx document.docx --output-dir output/ --no-images
 ```
 
-Uses pandoc if available (better output quality), falls back to mammoth + markdownify. Images are stripped.
+Uses pandoc if available (better output quality), falls back to mammoth + markdownify. Images are
+extracted to a `figures/` directory by default; pass `--no-images` to strip them. In batch mode,
+extracted images are prefixed with the source filename so they don't collide in a shared `figures/`.
 
 | Argument | Description |
 |----------|-------------|
 | `source` | Path to a `.docx` file or glob pattern |
 | `--output-dir` | Optional output directory (default: same as source) |
+| `--no-images` | Strip images instead of extracting them |
+| `--image-dir` | Custom figures directory name (default: `figures`) |
+
+**See also:** for Word **comments** (preserved inline as CriticMarkup) or policy/CX **debate-card**
+formatting (underline/highlight markup), use the standalone `docx-to-markdown` skill — to_md
+intentionally keeps docx conversion minimal and does not handle those.
 
 ## URL Conversion
 
 ```bash
 # Simple conversion
-uv run --project ~/Projects/to_md python -m to_md url "https://example.com/article"
+uv run --project ~/Projects/to-md python -m to_md url "https://example.com/article"
 
 # With images
-uv run --project ~/Projects/to_md python -m to_md url "https://example.com/article" --images
+uv run --project ~/Projects/to-md python -m to_md url "https://example.com/article" --images
 
 # Split by sections
-uv run --project ~/Projects/to_md python -m to_md url "https://docs.example.com/guide" --split
+uv run --project ~/Projects/to-md python -m to_md url "https://docs.example.com/guide" --split
 
 # Custom output
-uv run --project ~/Projects/to_md python -m to_md url "https://example.com/article" -o article.md
+uv run --project ~/Projects/to-md python -m to_md url "https://example.com/article" -o article.md
 ```
 
 | Flag | Description |
@@ -242,13 +258,31 @@ uv run --project ~/Projects/to_md python -m to_md url "https://example.com/artic
 
 When cleaning up scraped articles, always start from the scraped output and make targeted edits. Never rewrite the material wholesale.
 
+## Slides Conversion (.txt)
+
+Convert Google Slides "Download as Plain Text" exports into structured markdown.
+
+**This is an LLM interpretation task — there is no script and no `to_md` subcommand.** The text export
+strips all formatting, so slide boundaries, heading hierarchy, bullet nesting, and tables must be
+inferred from context. **Read `references/slides.md` (in this skill directory) for the full heuristics
+before converting.** In brief:
+
+1. Read the entire `.txt` first; understand the deck's arc before converting anything.
+2. Segment into slides on blank-line boundaries; the first line is the presentation title (`#`).
+3. Classify each block — section divider (`##`), slide title (`###`), bullet, sub-bullet, table,
+   quote, figure reference — and emit the matching markdown.
+4. Infer sub-bullet hierarchy from specificity / "e.g." / category→instance signals.
+5. **Preserve all content — never summarize or drop slides.**
+
+Save output as `[original-filename].md` next to the source (or wherever the user requests).
+
 ## AI OCR (Math Equations)
 
 For scanned equations or images of math that no backend can handle:
 
 ```bash
-uv run --project ~/Projects/to_md python -m to_md ocr image1.png image2.png
-uv run --project ~/Projects/to_md python -m to_md ocr image1.png --output equations.tex --yes
+uv run --project ~/Projects/to-md python -m to_md ocr image1.png image2.png
+uv run --project ~/Projects/to-md python -m to_md ocr image1.png --output equations.tex --yes
 ```
 
 - Prompts user with cost estimate before running (~$0.005 per equation image)
