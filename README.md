@@ -1,10 +1,9 @@
 # to-md
 
-Convert documents to clean, Obsidian-compatible Markdown.
+Convert documents to Markdown.
 
 Supported inputs: LaTeX (`.tex`, arXiv), PDF, EPUB, DOCX, and web URLs. Math is
-preserved as LaTeX, and an optional Claude Vision OCR pass (`ocr`) can transcribe
-equation images that don't survive plain-text extraction.
+preserved as LaTeX.
 
 ## Usage
 
