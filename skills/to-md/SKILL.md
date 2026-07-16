@@ -6,7 +6,7 @@ description: >-
   markdown — e.g. "convert this paper", "arxiv to markdown", "convert this PDF", "save this webpage
   as markdown", "convert docx", "epub to markdown", "convert slides to markdown", "format this slide
   export".
-allowed-tools: Read, Write, Edit, Glob, Bash(uv:*), AskUserQuestion
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(uv:*), Bash(git:*), AskUserQuestion
 ---
 
 # Document to Markdown Conversion
@@ -188,7 +188,7 @@ uv run --project ~/Projects/to-md python -m to_md pdf textbook.pdf output/ --pag
 uv run --project ~/Projects/to-md python -m to_md pdf textbook.pdf output/workspace/ --split-chapters
 ```
 
-- **Use the baseline as a sanity checker.** For PDFs with an embedded text layer the PyMuPDF text is digit-exact, so when QA'ing a marker/LLM conversion, diff it against the baseline per chapter (numbers, equations, wording) to catch silent OCR corruption that a single backend won't reveal.
+- **Use the baseline as a sanity checker.** For PDFs with an embedded text layer the PyMuPDF text is digit-exact, so when QA'ing a marker/LLM conversion, diff it against the baseline per chapter (numbers, equations, wording) to catch silent OCR corruption that a single backend won't reveal. This diff is the standard converter-independent cross-check that `references/qa.md` requires for ML-backed conversions.
 
 ## EPUB Conversion
 
@@ -288,6 +288,32 @@ uv run --project ~/Projects/to-md python -m to_md ocr image1.png --output equati
 - Prompts user with cost estimate before running (~$0.005 per equation image)
 - Use `--yes` to skip confirmation
 - Use `--output file.tex` to save to file
+
+## Quality Assurance
+
+QA is format-independent — it operates on the markdown output. Full protocol, triage rules,
+and templates: **`references/qa.md`**. Output formatting rules: **`references/styleguide.md`**.
+
+Ask the user once, up front, which tier they want:
+
+| Tier | Cost | Exit criteria |
+|------|------|---------------|
+| **T0 Lint** (default) | Near-zero | Deterministic checks clean; note what wasn't checked |
+| **T1 Standard** | Modest | T0 + sanity-check invariants vs. source + light sampled adversarial text review; no known meaning-changing errors |
+| **T2 Audit** (opt-in) | Expensive | T1 + fresh-context reviewer agents iterated until dry; quantified coverage statement |
+
+Hard rules at every tier:
+
+- **Never edit `~/Projects/to-md` during a conversion.** Converter bugs: record a minimal
+  repro, surface to the user.
+- **Every content fix is a transcription from the original** (cite page/location) — never a
+  reconstruction from memory.
+- **Document-specific fix code lives in the output's `workspace/`.** `git init` there before
+  the first scripted bulk edit: commit pristine output first, then one commit per fix (script
+  + effects). Dry-run fix scripts on a sample before bulk application.
+- **Measure before fixing** — count an error class before choosing a strategy; widespread
+  judgment-heavy classes signal rework (backend/flags), not manual repair.
+- **End with a residual-risk note**: what was checked, what wasn't, what's still open.
 
 ## Output Structure
 
