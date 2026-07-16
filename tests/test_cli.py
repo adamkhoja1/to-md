@@ -57,7 +57,9 @@ class TestCLIDispatch:
         cli = CLI()
         with patch("to_md.converters.docx.convert") as mock:
             cli.docx("input.docx")
-            mock.assert_called_once_with("input.docx", output_dir=None)
+            mock.assert_called_once_with(
+                "input.docx", output_dir=None, no_images=False, image_dir="figures"
+            )
 
     def test_url_dispatch(self):
         cli = CLI()

@@ -106,16 +106,25 @@ class CLI:
         self,
         source: str,
         output_dir: str | None = None,
+        no_images: bool = False,
+        image_dir: str = "figures",
     ) -> None:
         """Convert DOCX to Markdown.
 
         Args:
             source: Path to a .docx file or glob pattern.
             output_dir: Optional output directory.
+            no_images: Strip images instead of extracting them.
+            image_dir: Name of figures directory.
         """
         from to_md.converters.docx import convert
 
-        convert(source, output_dir=output_dir)
+        convert(
+            source,
+            output_dir=output_dir,
+            no_images=no_images,
+            image_dir=image_dir,
+        )
 
     def url(
         self,

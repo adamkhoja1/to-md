@@ -660,6 +660,32 @@ The results show that Model B is better.
 
 
 @pytest.fixture(scope="session")
+def docx_with_image() -> Path:
+    """DOCX with an embedded image (for image-extraction tests)."""
+    p = DATA_DIR / "docx" / "with_image.docx"
+    if p.exists():
+        return p
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    if not has_pandoc:
+        pytest.skip("pandoc not available to generate docx fixtures")
+
+    img = DATA_DIR / "docx" / "_embed.png"
+    _create_small_png(img)
+    md = (
+        "# Document With Image\n\n"
+        "Some text before the image.\n\n"
+        f"![a diagram]({img.resolve()})\n\n"
+        "Some text after the image.\n"
+    )
+    ok = _make_docx_via_pandoc(md, p)
+    img.unlink(missing_ok=True)
+    if not ok:
+        pytest.skip("pandoc not available to generate docx fixtures")
+    return p
+
+
+@pytest.fixture(scope="session")
 def docx_batch() -> Path:
     """Directory with two .docx files for batch conversion testing."""
     d = DATA_DIR / "docx" / "batch"

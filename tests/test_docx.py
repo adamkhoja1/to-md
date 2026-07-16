@@ -134,6 +134,53 @@ class TestConvertIntegration:
         assert (tmp_path / "test.md").exists()
 
 
+# ---------------------------------------------------------------------------
+# Image extraction
+# ---------------------------------------------------------------------------
+
+
+class TestImageExtraction:
+    @skip_no_pandoc
+    def test_extracts_images_by_default(self, docx_with_image, tmp_path):
+        output = tmp_path / "out"
+        convert(str(docx_with_image), str(output))
+
+        md_files = list(output.glob("*.md"))
+        assert len(md_files) == 1
+        content = md_files[0].read_text()
+
+        figures = output / "figures"
+        assert figures.exists()
+        assert len(list(figures.iterdir())) >= 1
+        assert "![" in content
+        assert "figures/" in content
+
+    @skip_no_pandoc
+    def test_no_images_strips(self, docx_with_image, tmp_path):
+        output = tmp_path / "out"
+        convert(str(docx_with_image), str(output), no_images=True)
+
+        content = list(output.glob("*.md"))[0].read_text()
+        assert "![" not in content
+        assert not (output / "figures").exists()
+
+    @skip_no_pandoc
+    def test_custom_image_dir(self, docx_with_image, tmp_path):
+        output = tmp_path / "out"
+        convert(str(docx_with_image), str(output), image_dir="assets")
+
+        content = list(output.glob("*.md"))[0].read_text()
+        assert (output / "assets").exists()
+        assert "assets/" in content
+
+    @skip_no_pandoc
+    def test_simple_doc_has_no_figures_dir(self, docx_simple, tmp_path):
+        """A docx with no images should not create an empty figures/ dir."""
+        output = tmp_path / "out"
+        convert(str(docx_simple), str(output))
+        assert not (output / "figures").exists()
+
+
 class TestConvertWithMammoth:
     @pytest.mark.skipif(not has_mammoth, reason="mammoth not installed")
     @skip_no_pandoc  # Need pandoc to generate fixture
@@ -146,3 +193,30 @@ class TestConvertWithMammoth:
         assert output.exists()
         content = output.read_text()
         assert len(content) > 10
+
+    @pytest.mark.skipif(not has_mammoth, reason="mammoth not installed")
+    @skip_no_pandoc  # Need pandoc to generate fixture
+    def test_mammoth_extracts_images(self, docx_with_image, tmp_path):
+        """Mammoth engine extracts embedded images to figures/."""
+        from to_md.converters.docx import _convert_with_mammoth
+
+        dst = tmp_path / "result.md"
+        _convert_with_mammoth(Path(docx_with_image), dst, extract_images=True)
+        assert dst.exists()
+        content = dst.read_text()
+
+        figures = tmp_path / "figures"
+        assert figures.exists()
+        assert len(list(figures.iterdir())) >= 1
+        assert "figures/" in content
+
+    @pytest.mark.skipif(not has_mammoth, reason="mammoth not installed")
+    @skip_no_pandoc
+    def test_mammoth_strips_images_when_disabled(self, docx_with_image, tmp_path):
+        from to_md.converters.docx import _convert_with_mammoth
+
+        dst = tmp_path / "result.md"
+        _convert_with_mammoth(Path(docx_with_image), dst, extract_images=False)
+        content = dst.read_text()
+        assert "![" not in content
+        assert not (tmp_path / "figures").exists()
