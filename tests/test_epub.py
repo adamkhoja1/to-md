@@ -189,6 +189,22 @@ class TestFixImagePaths:
 
 class TestImageHandling:
 
+    def test_extract_basename_collision(self, tmp_path):
+        # Same basename in different EPUB dirs must not overwrite on disk.
+        from ebooklib import epub as ep
+        book = ep.EpubBook()
+        for content, path in [(b"first", "images/fig.png"), (b"second", "illus/fig.png")]:
+            book.add_item(
+                ep.EpubItem(file_name=path, media_type="image/png", content=content)
+            )
+        path_map = extract_epub_images(book, tmp_path, "figures")
+        assert path_map == {
+            "images/fig.png": "figures/fig.png",
+            "illus/fig.png": "figures/fig_1.png",
+        }
+        assert (tmp_path / "figures" / "fig.png").read_bytes() == b"first"
+        assert (tmp_path / "figures" / "fig_1.png").read_bytes() == b"second"
+
     def test_extract_epub_images(self, epub_book, tmp_path):
         from ebooklib import epub as ep
         book = ep.read_epub(str(epub_book))

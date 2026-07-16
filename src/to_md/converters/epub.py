@@ -156,16 +156,22 @@ def extract_epub_images(
     """Extract images from EPUB. Returns mapping of original path -> new path."""
     figures_dir = output_dir / image_dir
     path_map: dict[str, str] = {}
+    used: set[str] = set()
 
     for item in book.get_items():
         # ITEM_IMAGE is 1 (a magic 3 here would select ITEM_SCRIPT);
         # covers are typed separately as ITEM_COVER.
         if item.get_type() in (ebooklib.ITEM_IMAGE, ebooklib.ITEM_COVER):
-            original_name = Path(item.get_name()).name
+            name = Path(item.get_name()).name
+            stem, suffix = Path(name).stem, Path(name).suffix
+            n = 1
+            while name in used:  # same basename in different EPUB dirs
+                name = f"{stem}_{n}{suffix}"  # fig.png, fig_1.png, ...
+                n += 1
+            used.add(name)
             figures_dir.mkdir(parents=True, exist_ok=True)
-            img_path = figures_dir / original_name
-            img_path.write_bytes(item.get_content())
-            path_map[item.get_name()] = f"{image_dir}/{original_name}"
+            (figures_dir / name).write_bytes(item.get_content())
+            path_map[item.get_name()] = f"{image_dir}/{name}"
 
     return path_map
 
