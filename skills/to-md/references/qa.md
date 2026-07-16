@@ -53,6 +53,21 @@ Exit criteria:
 - Every fix re-verified against the original.
 - Final review pass found nothing new.
 
+### Minimum tier by converter risk
+
+Match the floor to how the backend fails, not just to document importance:
+
+- **ML / OCR backends** (`pdf --backend marker`, `--backend surya`, `--use-llm`, `ocr`) produce
+  *fluent* errors — a corrupted digit or an OCR'd `Model`→`Wodel` reads as plausible, so reading
+  the output alone has poor recall. **Floor: T1**, and the independence cross-check is
+  **mandatory** (not optional) — run the canonical baseline diff (see Independence).
+- **Deterministic text paths** (`latex` from source, `epub`, `docx` via pandoc, `url`) extract a
+  real text layer, so residual errors are structural and mostly visible on inspection. T0/T1 by
+  document importance is fine; a cross-check is still cheap insurance.
+- **Scanned PDF, no text layer** (pure OCR, no baseline oracle): the cheapest cross-check is
+  unavailable, so each finding costs more to reach. **Floor: T2** when fidelity matters — lean on
+  invariant counts and targeted visual sampling, and say so in the residual-risk note.
+
 ### Escalation (recommended, never automatic)
 
 - Any S1 found at T0/T1: fix it, then recommend the next tier — where there was one, there are
@@ -92,17 +107,33 @@ Exit criteria:
   edit is diffable and revertable.
 - Scripted fixes: dry-run the diff on a sample first. Get user sign-off before bulk
   application when a fix touches meaning (S1) or rewrites at scale.
-- **Never edit `~/Projects/to-md` during a conversion job.** Suspected converter bug → record
-  a minimal repro in the QA log and surface it to the user; the user decides. Likewise for
-  additions to this protocol's error catalog: draft the addition and propose it.
+- **Never edit `~/Projects/to-md` during a conversion job.** When a converter bug is confirmed by
+  a *concretely failing* minimal repro (input + exact command + expected vs actual), file it as a
+  GitHub issue so findings aggregate across runs instead of dying in one workspace:
+  - **Dedup first**: `gh issue list --repo adamkhoja1/to-md --search "<symptom>"`. If it already
+    exists, add your repro as a comment rather than opening a duplicate.
+  - **Self-contained**: a fresh agent with only the issue must be able to reproduce it — paste the
+    minimal input (e.g. a ≤10-line `.tex`), the exact command, expected vs actual output, severity
+    (S1/S2/S3), and a high-level fix suggestion (not a patch).
+  - Keep the runnable repro in `workspace/` and link it. Still never edit the converter yourself.
+  - **Speculative** bugs (no failing repro) stay as workspace notes, not issues.
+
+  Likewise for additions to this protocol's error catalog: draft the addition and propose it.
 
 ## Independence
 
-- Any ML/OCR-backed conversion (marker, `--use-llm`, surya) gets **at least one
-  converter-independent cross-check** — these backends produce fluent errors that evade
-  reading. Pick the mechanism that fits: text-layer baseline diff (see the PDF QA Workspace
-  section of SKILL.md), invariant counts, targeted comparison against source text.
-- Sanity-check any checker on a known-good sample before trusting its findings — tooling bugs
+- Any ML/OCR-backed conversion (marker, surya, `--use-llm`, `ocr`) gets **at least one
+  converter-independent cross-check** — these backends produce fluent errors that evade reading.
+- For PDFs with a text layer, the canonical check is **`references/baseline_diff.py`**: it builds
+  a pymupdf text-layer baseline and diffs it against the converted output over **both numeric and
+  alphabetic tokens** (a numeric-only diff misses OCR word corruption like `Model`→`Wodel`). Run
+  it and **save the report in `workspace/`** so the check is reproducible, not ad hoc:
+  `uv run --project ~/Projects/to-md python <skill>/references/baseline_diff.py SOURCE.pdf out/`
+  On a scanned PDF it reports "no text layer" — that absence is itself the signal to escalate.
+- Other paths use the analogous independent source: epub/url already extract deterministically;
+  otherwise invariant counts or a targeted comparison against the source text.
+- The script self-checks its own tokenizer (`--self-check`) — run that if you doubt a finding.
+  More generally, sanity-check any checker on a known-good sample before trusting it; tooling bugs
   produce convincing false findings.
 
 ## Token economy

@@ -6,7 +6,7 @@ description: >-
   markdown — e.g. "convert this paper", "arxiv to markdown", "convert this PDF", "save this webpage
   as markdown", "convert docx", "epub to markdown", "convert slides to markdown", "format this slide
   export".
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(uv:*), Bash(git:*), AskUserQuestion
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(uv:*), Bash(git:*), Bash(gh:*), AskUserQuestion
 ---
 
 # Document to Markdown Conversion
@@ -302,10 +302,15 @@ Ask the user once, up front, which tier they want:
 | **T1 Standard** | Modest | T0 + sanity-check invariants vs. source + light sampled adversarial text review; no known meaning-changing errors |
 | **T2 Audit** (opt-in) | Expensive | T1 + fresh-context reviewer agents iterated until dry; quantified coverage statement |
 
+**Floor the tier by converter risk** (not just document importance): ML/OCR backends
+(`marker`/`surya`/`--use-llm`/`ocr`) → minimum **T1** with a mandatory `references/baseline_diff.py`
+cross-check; scanned PDFs with no text layer → **T2**. Deterministic text paths may default lower.
+
 Hard rules at every tier:
 
-- **Never edit `~/Projects/to-md` during a conversion.** Converter bugs: record a minimal
-  repro, surface to the user.
+- **Never edit `~/Projects/to-md` during a conversion.** A converter bug confirmed by a *failing
+  repro* → file a deduped GitHub issue (`gh`), self-contained enough to reproduce from the issue
+  alone, with a high-level fix suggestion. Never edit the converter yourself.
 - **Every content fix is a transcription from the original** (cite page/location) — never a
   reconstruction from memory.
 - **Document-specific fix code lives in the output's `workspace/`.** `git init` there before
