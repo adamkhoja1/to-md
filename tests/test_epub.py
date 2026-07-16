@@ -11,7 +11,7 @@ from conftest import skip_no_epub_deps
 # Only import epub module if deps are available
 pytestmark = skip_no_epub_deps
 
-from to_md.converters.epub import (
+from to_md.converters.epub import (  # noqa: E402  (import must follow skip guard)
     _fix_image_paths,
     _table_to_md,
     convert,
@@ -144,12 +144,50 @@ class TestTableToMd:
 # ---------------------------------------------------------------------------
 
 
-class TestImageHandling:
-    def test_fix_image_paths(self):
+class TestFixImagePaths:
+    """Exact-equality assertions: a substring check passed on the doubled
+    ``figures/figures/`` output and let the cascading-replace bug ship."""
+
+    PATH_MAP = {"images/photo.png": "figures/photo.png"}
+
+    def test_full_path_target(self):
+        out = _fix_image_paths("![fig](images/photo.png)", self.PATH_MAP)
+        assert out == "![fig](figures/photo.png)"
+
+    def test_basename_target(self):
+        out = _fix_image_paths("![fig](photo.png)", self.PATH_MAP)
+        assert out == "![fig](figures/photo.png)"
+
+    def test_root_level_image(self):
+        # Gutenberg case: image at EPUB root, referenced by bare name.
+        out = _fix_image_paths("![Cover](cover.png)", {"cover.png": "figures/cover.png"})
+        assert out == "![Cover](figures/cover.png)"
+
+    def test_alt_text_preserved(self):
+        # A rewrite must return a complete embed, not a stray `](...)` fragment.
+        out = _fix_image_paths("![The Origin](images/photo.png)", self.PATH_MAP)
+        assert out.startswith("![The Origin](")
+
+    def test_unknown_target_untouched(self):
+        md = "![ext](https://example.com/x.png)"
+        assert _fix_image_paths(md, self.PATH_MAP) == md
+
+    def test_prose_and_plain_links_untouched(self):
+        # Blind str.replace used to rewrite filename mentions in body text.
+        md = "See photo.png and [a link](images/photo.png) in the text."
+        assert _fix_image_paths(md, self.PATH_MAP) == md
+
+    def test_reapplication_converges(self):
+        once = _fix_image_paths("![fig](images/photo.png)", self.PATH_MAP)
+        twice = _fix_image_paths(once, self.PATH_MAP)
+        assert once == twice == "![fig](figures/photo.png)"
+
+    def test_empty_map(self):
         md = "![fig](images/photo.png)"
-        path_map = {"images/photo.png": "figures/photo.png", "photo.png": "figures/photo.png"}
-        result = _fix_image_paths(md, path_map)
-        assert "figures/photo.png" in result
+        assert _fix_image_paths(md, {}) == md
+
+
+class TestImageHandling:
 
     def test_extract_epub_images(self, epub_book, tmp_path):
         from ebooklib import epub as ep

@@ -171,12 +171,24 @@ def extract_epub_images(
 
 
 def _fix_image_paths(markdown: str, path_map: dict[str, str]) -> str:
-    """Replace EPUB-internal image paths with extracted paths."""
+    """Rewrite EPUB-internal image targets to their extracted paths.
+
+    Embed targets are whatever the source ``<img src>`` was — full EPUB-internal
+    path or bare basename. Rewrite them in a single pass scoped to image embeds,
+    so an already-rewritten path is never re-scanned (cascading ``str.replace``
+    doubled the prefix) and prose mentioning a filename is left alone.
+    """
+    by_name: dict[str, str] = {}
     for original, new_path in path_map.items():
-        original_name = Path(original).name
-        markdown = markdown.replace(original, new_path)
-        markdown = markdown.replace(original_name, new_path)
-    return markdown
+        by_name[original] = new_path
+        by_name[Path(original).name] = new_path
+
+    def repl(match: re.Match[str]) -> str:
+        alt, target = match.group(1), match.group(2).strip()
+        hit = by_name.get(target) or by_name.get(target.rsplit("/", 1)[-1])
+        return f"![{alt}]({hit})" if hit else match.group(0)
+
+    return re.sub(r"!\[([^\]]*)\]\(([^)]*)\)", repl, markdown)
 
 
 # ---------------------------------------------------------------------------
