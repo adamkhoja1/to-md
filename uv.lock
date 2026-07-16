@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-07-09T11:10:27.648311Z"
+exclude-newer = "2026-07-09T11:28:20.317152Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -1815,7 +1815,7 @@ wheels = [
 
 [[package]]
 name = "to-md"
-version = "1.1.4"
+version = "1.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "fire" },
