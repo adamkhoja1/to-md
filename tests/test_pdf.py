@@ -4,8 +4,6 @@ Unit tests for font/heading detection should pass.
 Integration tests check structural properties (files created, headings preserved).
 """
 
-from pathlib import Path
-
 import fitz  # type: ignore[import-untyped]
 import pytest
 
@@ -13,6 +11,7 @@ from to_md.converters.pdf import (
     ConversionConfig,
     FontStats,
     PyMuPDFBackend,
+    _relink_marker_images,
     compute_font_stats,
     convert,
     detect_heading,
@@ -206,6 +205,61 @@ class TestExtractImages:
         doc.close()
         # Text-only PDF shouldn't have embedded images
         assert isinstance(refs, list)
+
+
+# ---------------------------------------------------------------------------
+# _relink_marker_images
+# ---------------------------------------------------------------------------
+
+
+class TestRelinkMarkerImages:
+    """Marker emits bare-filename image refs; files are saved under image_dir/."""
+
+    IMAGES = {"_page_2_Figure_0.jpeg", "_page_3_Picture_2.jpeg"}
+
+    def test_bare_refs_get_prefix(self):
+        md = "text\n\n![](_page_2_Figure_0.jpeg)\n\n![alt](_page_3_Picture_2.jpeg)"
+        out = _relink_marker_images(md, self.IMAGES, "figures")
+        assert "![](figures/_page_2_Figure_0.jpeg)" in out
+        assert "![alt](figures/_page_3_Picture_2.jpeg)" in out
+
+    def test_custom_image_dir(self):
+        out = _relink_marker_images("![](_page_2_Figure_0.jpeg)", self.IMAGES, "img")
+        assert out == "![](img/_page_2_Figure_0.jpeg)"
+
+    def test_title_preserved(self):
+        out = _relink_marker_images(
+            '![](_page_2_Figure_0.jpeg "The Transformer")', self.IMAGES, "figures"
+        )
+        assert out == '![](figures/_page_2_Figure_0.jpeg "The Transformer")'
+
+    def test_stripped_when_no_image_dir(self):
+        md = "before\n\n![](_page_2_Figure_0.jpeg)\n\nafter"
+        out = _relink_marker_images(md, self.IMAGES, None)
+        assert "_page_2_Figure_0" not in out
+        assert "before" in out
+        assert "after" in out
+
+    def test_unknown_image_target_untouched(self):
+        md = "![web](https://example.com/x.png)"
+        assert _relink_marker_images(md, self.IMAGES, "figures") == md
+
+    def test_non_image_links_untouched(self):
+        # Plain links (no !) are never rewritten, even to a known image name;
+        # citation anchors and external links pass through in both modes.
+        md = "[file](_page_2_Figure_0.jpeg) [\\[9\\]](#page-10-9) [x](http://a.b)"
+        assert _relink_marker_images(md, self.IMAGES, "figures") == md
+        assert _relink_marker_images(md, self.IMAGES, None) == md
+
+    def test_idempotent(self):
+        md = "![](_page_2_Figure_0.jpeg)"
+        once = _relink_marker_images(md, self.IMAGES, "figures")
+        twice = _relink_marker_images(once, self.IMAGES, "figures")
+        assert once == twice
+
+    def test_no_images(self):
+        md = "just prose, no figures"
+        assert _relink_marker_images(md, set(), "figures") == md
 
 
 # ---------------------------------------------------------------------------

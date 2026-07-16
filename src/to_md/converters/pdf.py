@@ -360,14 +360,17 @@ class MarkerBackend(Backend):
         rendered = converter(pdf_path)
         markdown = rendered.markdown
 
+        image_names = set(rendered.images or {})
         image_count = 0
         if config.extract_images and rendered.images:
             figures_dir = output_dir / config.image_dir
             figures_dir.mkdir(parents=True, exist_ok=True)
             for img_name, img in rendered.images.items():
-                img_path = figures_dir / img_name
-                img.save(str(img_path))
+                img.save(str(figures_dir / img_name))
                 image_count += 1
+            markdown = _relink_marker_images(markdown, image_names, config.image_dir)
+        else:
+            markdown = _relink_marker_images(markdown, image_names, None)
 
         files_created: list[str] = []
         if config.split_chapters:
@@ -413,6 +416,27 @@ def _split_markdown_by_h1(markdown: str) -> list[tuple[str, str]]:
         chapters.append(current)
 
     return [(title, "\n".join(content)) for title, content in chapters]
+
+
+def _relink_marker_images(
+    markdown: str, image_names: set[str], image_dir: str | None
+) -> str:
+    """Point marker's bare image refs at image_dir/, or strip them if image_dir is None.
+
+    Marker emits ``![](<name>)`` with bare filenames while we save the files into
+    ``image_dir/``; the refs must move with them (or be removed under --no-images).
+    """
+    pattern = re.compile(r'!\[([^\]]*)\]\(([^)\s]+)(\s+"[^"]*")?\)')
+
+    def repl(match: re.Match[str]) -> str:
+        alt, target, title = match.group(1), match.group(2), match.group(3) or ""
+        if target not in image_names:
+            return match.group(0)
+        if image_dir is None:
+            return ""
+        return f"![{alt}]({image_dir}/{target}{title})"
+
+    return pattern.sub(repl, markdown)
 
 
 # ---------------------------------------------------------------------------
