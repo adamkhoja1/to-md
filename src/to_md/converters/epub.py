@@ -56,6 +56,13 @@ def _convert_element(element: Tag | str) -> str:
         return f"\n{'#' * level} {text}\n\n"
 
     if tag == "p":
+        # TODO: source HTML (Project Gutenberg / pandoc) hard-wraps <p> text at ~70 chars,
+        # and .strip() only trims the ends, so those intra-paragraph newlines survive and
+        # every paragraph is emitted multi-line. The output styleguide (§2 "Paragraphs: one
+        # line each") requires unwrapped paragraphs. High-level fix: collapse inner
+        # whitespace here, e.g. re.sub(r"\s+", " ", children).strip(), while guarding
+        # <pre>/<code> so literal whitespace there is preserved. For now this is handled as
+        # a post-conversion QA reflow step rather than in the converter.
         children = "".join(_convert_element(c) for c in element.children)
         return f"\n{children.strip()}\n\n"
 

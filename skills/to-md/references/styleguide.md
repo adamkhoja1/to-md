@@ -15,6 +15,13 @@ additions through the user).
 
 ## 2. Markdown house style (Obsidian-flavored)
 
+- **Paragraphs: one line each (unwrapped).** A paragraph is a single line; blank lines are the
+  only paragraph separator. Do **not** preserve the source's intra-paragraph line wrapping — join
+  hard-wrapped lines inside a `<p>` (pervasive in Project Gutenberg / pandoc-derived HTML) into
+  one line with single spaces. Rationale: a lone newline mid-paragraph is ambiguous across
+  renderers (some emit `<br>`), whereas one-line paragraphs are canonical, portable, and
+  diff-friendly. This joins whitespace only — it never reflows across a blank line and never
+  touches tables, list items, code blocks, or headings.
 - **Math**: inline `$...$`, display `$$...$$`. Numbered equations keep their printed number
   via `\tag{N.M}` inside the display block — don't strand the number outside the math.
 - **Footnotes**: Obsidian syntax (`[^n]` marker, `[^n]:` definition), definitions at the end
