@@ -81,6 +81,44 @@ def download_image(img_url: str, figures_dir: Path, index: int) -> str | None:
         return None
 
 
+def dedup_image_tails(markdown: str) -> str:
+    """Drop text that trafilatura 2.1.0 duplicates after image embeds.
+
+    For text that follows an inline image within one block (``<p><img/>text</p>``,
+    held as the image's lxml ``.tail``), trafilatura 2.1.0's markdown serializer
+    emits the tail twice: its graphic branch appends a whitespace-stripped copy to
+    the ``![]()`` embed line, then the generic end-of-element tail handler emits
+    the same tail again in the paragraph flow. The embed-line copy is a bare
+    fragment (inline formatting lost, may stop mid-sentence); the paragraph copy
+    is the faithful one — so the fragment is what gets dropped here. Under the
+    previously pinned 2.0.0 the same text was silently *lost* instead, which is
+    why the pin moved to >=2.1.0 and this guard exists rather than an HTML-level
+    workaround.
+
+    DELETE THIS GUARD once the pinned trafilatura release includes upstream
+    commit 18a7b42 (already on master: the generic tail handler skips graphic
+    tails, ending the double emission — first release after 2.1.0 should have
+    it). On fixed versions the guard is already a no-op: the trailing text then
+    appears only on the embed line, the following paragraph doesn't repeat it,
+    and the startswith check below never fires — so removal is cleanup, not
+    urgent.
+    """
+    lines = markdown.split("\n")
+    result = []
+    for i, line in enumerate(lines):
+        match = re.match(r"(!\[[^\]]*\]\([^)]+\))\s+(\S.*)$", line)
+        if match:
+            embed, trailing = match.groups()
+            following = next((ln for ln in lines[i + 1 :] if ln.strip()), "")
+            # Both copies come from the same tail string, so the duplicated
+            # paragraph always starts with the embed-line fragment.
+            if " ".join(following.split()).startswith(" ".join(trailing.split())):
+                result.append(embed)
+                continue
+        result.append(line)
+    return "\n".join(result)
+
+
 def extract_images_from_markdown(
     markdown: str, base_url: str, figures_dir: Path, image_dir_name: str
 ) -> str:
@@ -189,6 +227,10 @@ def convert(
 
     if not markdown:
         raise SystemExit("Failed to extract content from URL")
+
+    # Workaround for trafilatura 2.1.0 double-emitting image-adjacent text;
+    # see dedup_image_tails' docstring for when this can be deleted.
+    markdown = dedup_image_tails(markdown)
 
     if not markdown.startswith("#"):
         markdown = f"# {title}\n\n{markdown}"

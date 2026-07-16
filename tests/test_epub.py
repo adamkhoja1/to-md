@@ -3,7 +3,6 @@
 Requires ebooklib and beautifulsoup4 (skip gracefully if missing).
 """
 
-from pathlib import Path
 
 import pytest
 
@@ -156,8 +155,14 @@ class TestImageHandling:
         from ebooklib import epub as ep
         book = ep.read_epub(str(epub_book))
         path_map = extract_epub_images(book, tmp_path, "figures")
-        # book.epub has one embedded image
-        assert isinstance(path_map, dict)
+        # book.epub has one embedded image; it must be found and written out.
+        # (The previous `isinstance(path_map, dict)` assertion passed on an
+        # empty map, letting a wrong get_type() constant ship — images were
+        # never extracted at all.)
+        assert path_map == {"images/figure1.png": "figures/figure1.png"}
+        extracted = tmp_path / "figures" / "figure1.png"
+        assert extracted.exists()
+        assert extracted.stat().st_size > 0
 
 
 # ---------------------------------------------------------------------------

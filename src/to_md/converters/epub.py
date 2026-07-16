@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+import ebooklib  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup, Tag  # type: ignore[import-untyped]
 from ebooklib import epub  # type: ignore[import-untyped]
 from pydantic import BaseModel
@@ -157,7 +158,9 @@ def extract_epub_images(
     path_map: dict[str, str] = {}
 
     for item in book.get_items():
-        if item.get_type() == 3:  # IMAGE type
+        # ITEM_IMAGE is 1 (a magic 3 here would select ITEM_SCRIPT);
+        # covers are typed separately as ITEM_COVER.
+        if item.get_type() in (ebooklib.ITEM_IMAGE, ebooklib.ITEM_COVER):
             original_name = Path(item.get_name()).name
             figures_dir.mkdir(parents=True, exist_ok=True)
             img_path = figures_dir / original_name
@@ -218,7 +221,7 @@ def convert(
             )
 
     # Process chapters
-    chapters = list(book.get_items_of_type(9))  # DOCUMENT type
+    chapters = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
     if not chapters:
         spine_ids = [item_id for item_id, _ in book.spine]
         chapters = [book.get_item_with_id(item_id) for item_id in spine_ids]

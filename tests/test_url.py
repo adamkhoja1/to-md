@@ -14,6 +14,7 @@ from conftest import skip_no_trafilatura
 try:
     from to_md.converters.url import (
         convert,
+        dedup_image_tails,
         download_image,
         extract_images_from_markdown,
         extract_title,
@@ -139,6 +140,66 @@ class TestDownloadImage:
 
         assert filename is not None
         assert filename.endswith(".jpg")
+
+
+# ---------------------------------------------------------------------------
+# dedup_image_tails
+# ---------------------------------------------------------------------------
+
+
+class TestDedupImageTails:
+    """Guard against trafilatura 2.1.0's image-tail double emission.
+
+    The duplicated shape is: an embed line carrying trailing text, followed by
+    a paragraph that repeats that text (both copies come from one lxml tail).
+    """
+
+    def test_exact_duplicate_stripped(self):
+        md = "![](http://x/a.jpg) They decided to rewrite it.\n\nThey decided to rewrite it.\n\nNext para."
+        result = dedup_image_tails(md)
+        assert result.count("They decided to rewrite it.") == 1
+        assert "![](http://x/a.jpg)" in result.split("\n")[0]
+        assert result.split("\n")[0] == "![](http://x/a.jpg)"
+
+    def test_fragment_prefix_stripped(self):
+        # Embed-line copy is a bare fragment; paragraph copy carries the full
+        # sentence with inline formatting (the "The old mantra" case).
+        md = (
+            "![](http://x/b.jpg) The old mantra\n\n"
+            "The old mantra *build one to throw away* is dangerous.\n"
+        )
+        result = dedup_image_tails(md)
+        assert result.count("The old mantra") == 1
+        assert "*build one to throw away*" in result
+
+    def test_no_duplicate_unchanged(self):
+        # Fixed-trafilatura shape: tail only on the embed line, next paragraph
+        # unrelated. The guard must be a no-op.
+        md = "![](http://x/c.jpg) A caption-like sentence.\n\nCompletely different paragraph."
+        assert dedup_image_tails(md) == md
+
+    def test_bare_embed_unchanged(self):
+        md = "Intro para.\n\n![alt text](http://x/d.jpg)\n\nNext para."
+        assert dedup_image_tails(md) == md
+
+    def test_embed_at_end_unchanged(self):
+        md = "Some text.\n\n![](http://x/e.jpg) trailing words"
+        assert dedup_image_tails(md) == md
+
+    def test_multiple_images_mixed(self):
+        md = (
+            "![](http://x/1.jpg) Duplicated one.\n\nDuplicated one.\n\n"
+            "![](http://x/2.jpg) Kept caption.\n\nUnrelated paragraph.\n"
+        )
+        result = dedup_image_tails(md)
+        assert result.count("Duplicated one.") == 1
+        assert "![](http://x/2.jpg) Kept caption." in result
+
+    def test_whitespace_normalized_match(self):
+        # The paragraph copy may differ from the fragment in whitespace only.
+        md = "![](http://x/f.jpg) two  words\n\ntwo words and more.\n"
+        result = dedup_image_tails(md)
+        assert result.split("\n")[0] == "![](http://x/f.jpg)"
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +335,44 @@ class TestConvertIntegration:
         assert "â" not in content  # no Latin-1 mojibake
         assert "doesn’t spin" in content
         assert "shouldn’t exist—at least" in content
+
+    @skip_no_trafilatura
+    def test_image_adjacent_text_neither_lost_nor_duplicated(self, tmp_path):
+        """Text flowing after an inline <img> survives exactly once.
+
+        Regression test for the trafilatura image-tail bug: 2.0.0 silently
+        dropped the text (`<p><img/>text</p>` — the sentence is the img's lxml
+        tail); 2.1.0 emits it twice. The version floor plus dedup_image_tails
+        must yield exactly one copy alongside the image embed. Padding
+        paragraphs are required: trafilatura prunes images from thin content,
+        and a pruned image masks the bug.
+        """
+        filler = "".join(
+            f"<p>Filler sentence number {i}, providing enough body text that "
+            f"the extractor retains images during extraction.</p>"
+            for i in range(8)
+        )
+        probe = "They decided to rewrite the code from scratch."
+        html = (
+            "<html><head><title>Tail Test</title></head><body><article>"
+            f"{filler}"
+            f'<p><img src="http://example.com/photo.jpg"/>{probe}</p>'
+            f"{filler}"
+            "</article></body></html>"
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = html.encode("utf-8")
+        mock_response.headers = {"content-type": "image/jpeg"}
+        mock_response.raise_for_status = MagicMock()
+
+        output = tmp_path / "result.md"
+        with patch("to_md.converters.url.requests.get", return_value=mock_response):
+            convert("https://example.com/tail-test", output=str(output), images=True)
+
+        content = output.read_text(encoding="utf-8")
+        assert content.count(probe) == 1  # not lost (2.0.0), not doubled (2.1.0)
+        assert "![](figures/" in content  # image embed survived alongside
 
     @pytest.mark.network
     @skip_no_trafilatura

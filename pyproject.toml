@@ -1,6 +1,6 @@
 [project]
 name = "to-md"
-version = "1.1.1"
+version = "1.1.2"
 description = "Convert LaTeX, PDF, EPUB, DOCX, and URLs to clean Markdown"
 requires-python = ">=3.13"
 dependencies = [
@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-url = ["trafilatura>=2.0.0"]
+url = ["trafilatura>=2.1.0"]
 docx = ["mammoth>=1.8.0", "markdownify>=0.14.1"]
 epub = ["ebooklib>=0.18", "beautifulsoup4>=4.12.0"]
 marker = ["marker-pdf"]
