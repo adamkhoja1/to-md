@@ -59,6 +59,10 @@ ARXIV_URL_RE = re.compile(
 FIGURE_EXTS = {"*.eps", "*.pdf", "*.png", "*.jpg", "*.jpeg", "*.svg"}
 FIGURE_DIRS = ["figures", "figs", "images", "img", "fig", "."]
 
+# Cap rasterized figure width so an oversized vector canvas (e.g. a full-page PDF
+# figure) does not explode to hundreds of MB at a fixed 300 DPI.
+MAX_RASTER_WIDTH_PX = 2000
+
 
 def _detect_arxiv_id(source: str) -> str | None:
     """Extract arXiv ID from a string (ID or URL)."""
@@ -268,6 +272,66 @@ def flatten_latex(
 
 
 # ---------------------------------------------------------------------------
+# Stage 2.5: Frontmatter (title / author / abstract)
+# ---------------------------------------------------------------------------
+
+ABSTRACT_RE = re.compile(r"\\begin\{abstract\}(.*?)\\end\{abstract\}", re.DOTALL)
+
+
+def _extract_braced(content: str, command: str) -> str | None:
+    """Return the balanced-brace argument of the first ``command{...}``, or None."""
+    m = re.search(re.escape(command) + r"\s*\{", content)
+    if not m:
+        return None
+    start = m.end()
+    depth = 1
+    i = start
+    while i < len(content) and depth:
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+        i += 1
+    if depth != 0:
+        return None
+    return content[start : i - 1]
+
+
+def _clean_latex_inline(s: str) -> str:
+    """Reduce a LaTeX title/author fragment to plain text for a heading line."""
+    s = re.sub(r"(?<!\\)%.*", "", s)  # strip LaTeX comments
+    for _ in range(2):  # a couple of passes handle simple nesting
+        s = re.sub(
+            r"\\(?:thanks|footnote|inst|orcidlink|affiliation|affil|email)\s*\{[^{}]*\}",
+            "",
+            s,
+        )
+    s = s.replace(r"\and", ", ").replace(r"\\", ", ")
+    s = re.sub(r"\\[a-zA-Z@]+\*?", "", s)  # drop remaining commands, keep braced text
+    s = s.replace("~", " ").replace("{", "").replace("}", "")
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"\s*,\s*", ", ", s)  # normalize spacing around separators
+    s = re.sub(r"(?:,\s*){2,}", ", ", s)  # collapse repeated separators
+    return s.strip().strip(",").strip()
+
+
+def _preprocess_frontmatter(tex: str) -> tuple[str, str | None, str | None]:
+    """Surface the title block that pandoc drops without ``--standalone``.
+
+    Pandoc omits ``\\maketitle`` (title/author) and the ``abstract`` environment in
+    non-standalone mode. We pull title/author out for a prepended heading and rewrite
+    the abstract into a subsection so its prose (math, citations) flows through pandoc
+    normally. Returns (transformed_tex, title, authors).
+    """
+    title = _clean_latex_inline(_extract_braced(tex, r"\title") or "") or None
+    authors = _clean_latex_inline(_extract_braced(tex, r"\author") or "") or None
+    tex = ABSTRACT_RE.sub(
+        lambda m: "\\subsection*{Abstract}\n" + m.group(1).strip() + "\n", tex
+    )
+    return tex, title, authors
+
+
+# ---------------------------------------------------------------------------
 # Stage 3: Run pandoc
 # ---------------------------------------------------------------------------
 
@@ -398,6 +462,11 @@ def strip_html_artifacts(md: str) -> str:
     md = re.sub(r"<figure[^>]*>\s*\n?", "", md)
     md = re.sub(r"</figure>\s*\n?", "", md)
     md = re.sub(r"<figcaption>(.*?)</figcaption>", r"*\1*", md, flags=re.DOTALL)
+    # Convert image embeds to markdown rather than dropping them; fix_image_paths
+    # rewrites the src to the local figures/ path afterwards. (Pandoc emits figures
+    # as <figure><img src=…><figcaption>, so deleting <img> loses every image.)
+    md = re.sub(r'<embed[^>]*\bsrc="([^"]*)"[^>]*/?>', r"![](\1)", md)
+    md = re.sub(r'<img[^>]*\bsrc="([^"]*)"[^>]*/?>', r"![](\1)", md)
     md = re.sub(r"<embed[^>]*/?>", "", md)
     md = re.sub(r"<img[^>]*/?>", "", md)
     md = re.sub(r"</?p>", "", md)
@@ -460,7 +529,11 @@ def convert_figures(
             try:
                 doc = fitz.open(str(fig_path))
                 page = doc[0]
-                pix = page.get_pixmap(matrix=fitz.Matrix(300 / 72, 300 / 72))
+                zoom = 300 / 72
+                width_pt = page.rect.width
+                if width_pt:
+                    zoom = min(zoom, MAX_RASTER_WIDTH_PX / width_pt)
+                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
                 pix.save(str(out_path))
                 doc.close()
             except Exception as e:
@@ -575,6 +648,9 @@ def convert(
             print(f"Created: {flat_out}")
             return
 
+        # Stage 2.5: Surface the title/author/abstract pandoc drops
+        flattened, doc_title, doc_authors = _preprocess_frontmatter(flattened)
+
         # Stage 3: Pandoc
         print("Running pandoc...")
         markdown = run_pandoc_latex(
@@ -588,6 +664,13 @@ def convert(
         markdown = strip_html_artifacts(markdown)
         markdown = strip_labels_and_refs(markdown)
         markdown = clean_text(markdown)
+
+        # Prepend the title/author heading pandoc omits without --standalone
+        if doc_title:
+            header = f"# {doc_title}\n\n"
+            if doc_authors:
+                header += f"*{doc_authors}*\n\n"
+            markdown = header + markdown
 
         result = ConversionResult()
 

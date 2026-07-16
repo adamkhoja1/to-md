@@ -11,11 +11,13 @@ from unittest.mock import patch
 import pytest
 
 from to_md.converters.latex import (
+    MAX_RASTER_WIDTH_PX,
     ConversionConfig,
     InputContext,
     _detect_arxiv_id,
     _discover_figures,
     _find_main_tex,
+    _preprocess_frontmatter,
     convert,
     convert_figures,
     convert_math_delimiters,
@@ -200,14 +202,33 @@ class TestStripHtmlArtifacts:
     def test_removes_br(self):
         assert "<br" not in strip_html_artifacts("text<br/>more")
 
-    def test_removes_img(self):
-        assert "<img" not in strip_html_artifacts('<img src="foo.png"/>')
+    def test_img_becomes_markdown_embed(self):
+        result = strip_html_artifacts('<img src="foo.png"/>')
+        assert "<img" not in result
+        assert "![](foo.png)" in result
+
+    def test_srcless_img_dropped(self):
+        assert "<img" not in strip_html_artifacts("<img/>")
 
     def test_removes_span(self):
         assert "<span" not in strip_html_artifacts('<span class="x">text</span>')
 
-    def test_removes_embed(self):
-        assert "<embed" not in strip_html_artifacts('<embed src="file.pdf"/>')
+    def test_embed_becomes_markdown_embed(self):
+        result = strip_html_artifacts('<embed src="file.pdf"/>')
+        assert "<embed" not in result
+        assert "![](file.pdf)" in result
+
+    def test_figure_block_keeps_image_and_caption(self):
+        block = (
+            '<figure id="fig:x">\n'
+            '<img src="tinypic.png" style="width:50.0%" />\n'
+            "<figcaption>A caption.</figcaption>\n"
+            "</figure>"
+        )
+        result = strip_html_artifacts(block)
+        assert "![](tinypic.png)" in result
+        assert "*A caption.*" in result
+        assert "<figure" not in result and "<img" not in result
 
     def test_removes_links_keeps_text(self):
         result = strip_html_artifacts('<a href="http://example.com">link text</a>')
@@ -233,6 +254,37 @@ class TestStripLabelsAndRefs:
 
     def test_tag(self):
         assert r"\tag" not in strip_labels_and_refs(r"x^2 \tag{1}")
+
+
+class TestPreprocessFrontmatter:
+    def test_extracts_title_and_author(self):
+        tex = r"\title{My Title}\author{Jane Doe}\begin{document}x\end{document}"
+        _, title, authors = _preprocess_frontmatter(tex)
+        assert title == "My Title"
+        assert authors == "Jane Doe"
+
+    def test_abstract_becomes_subsection(self):
+        out, _, _ = _preprocess_frontmatter(
+            r"\begin{abstract}Hello world.\end{abstract}\section{Intro}"
+        )
+        assert r"\subsection*{Abstract}" in out
+        assert "Hello world." in out
+        assert r"\begin{abstract}" not in out
+
+    def test_author_and_separator_joined(self):
+        _, _, authors = _preprocess_frontmatter(r"\author{A \and B}")
+        assert authors == "A, B"
+
+    def test_strips_comment_and_thanks(self):
+        _, _, authors = _preprocess_frontmatter(
+            "\\author{Jane Doe\\thanks{funded}% a comment\n}"
+        )
+        assert authors == "Jane Doe"
+
+    def test_no_title_or_author(self):
+        _, title, authors = _preprocess_frontmatter(r"\section{Intro}body")
+        assert title is None
+        assert authors is None
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +385,31 @@ class TestConvertFigures:
         assert any(".png" in v for v in path_map.values())
         assert not warnings
 
+    def test_pdf_figure_size_bounded(self, tmp_path):
+        """Oversized PDF figures are capped, not rasterized to hundreds of MB."""
+        import fitz
+
+        project = tmp_path / "project"
+        project.mkdir()
+        doc = fitz.open()
+        doc.new_page(width=4000, height=2000)  # oversized vector canvas
+        pdf_fig = project / "wide.pdf"
+        doc.save(str(pdf_fig))
+        doc.close()
+
+        output = tmp_path / "output"
+        output.mkdir()
+        ctx = InputContext(
+            project_dir=project,
+            main_tex=project / "main.tex",
+            figure_files=[pdf_fig],
+        )
+        convert_figures(ctx, output, ConversionConfig())
+
+        png = next((output / "figures").glob("*.png"))
+        pix = fitz.Pixmap(str(png))
+        assert pix.width <= MAX_RASTER_WIDTH_PX
+
 
 # ---------------------------------------------------------------------------
 # Integration tests
@@ -354,6 +431,20 @@ class TestConvertIntegration:
         # Check structural properties
         assert "Introduction" in all_content or "introduction" in all_content
         assert "Conclusion" in all_content or "conclusion" in all_content
+
+    @skip_no_pandoc
+    def test_frontmatter_and_figure_embedded(self, latex_simple_paper, tmp_path):
+        """BUG 1: title/author/abstract surfaced. BUG 2: figure embedded, not just captioned."""
+        output = tmp_path / "output"
+        convert(str(latex_simple_paper / "paper.tex"), str(output))
+        content = "\n".join(f.read_text() for f in output.glob("*.md"))
+        # BUG 1 — frontmatter pandoc otherwise drops
+        assert "A Simple Test Paper" in content
+        assert "Test Author" in content
+        assert "tests the LaTeX to Markdown conversion" in content
+        # BUG 2 — figure embedded as a markdown image pointing into figures/
+        assert "![" in content
+        assert "figures/" in content
 
     @skip_no_pandoc
     def test_multifile(self, latex_multi_file, tmp_path):
