@@ -29,8 +29,12 @@ class ConversionConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def extract_title(html: str, url: str) -> str:
-    """Extract title from HTML or fall back to URL."""
+def extract_title(html: str | bytes, url: str) -> str:
+    """Extract title from HTML or fall back to URL.
+
+    Accepts raw bytes so trafilatura can detect the page's encoding itself
+    (see ``convert``); a pre-decoded ``str`` also works.
+    """
     import trafilatura  # type: ignore[import-untyped]
 
     metadata = trafilatura.extract_metadata(html)
@@ -163,7 +167,10 @@ def convert(
             headers={"User-Agent": "Mozilla/5.0 (compatible; to-md/1.0)"},
         )
         response.raise_for_status()
-        html = response.text
+        # Pass raw bytes, not response.text: requests defaults undeclared
+        # text/html to ISO-8859-1, mojibaking UTF-8 pages. trafilatura detects
+        # the real encoding (meta charset + statistics) from the bytes.
+        html = response.content
     except requests.RequestException as e:
         raise SystemExit(f"Failed to fetch URL: {e}")
 
